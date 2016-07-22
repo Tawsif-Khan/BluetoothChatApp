@@ -20,10 +20,11 @@ import android.widget.ImageView;
 import android.widget.Spinner;
 import android.widget.Toast;
 
-import com.simonguest.BTPhotoTransfer.com.simonguest.btxfr.ClientThread;
-import com.simonguest.BTPhotoTransfer.com.simonguest.btxfr.MessageType;
-import com.simonguest.BTPhotoTransfer.com.simonguest.btxfr.ProgressData;
-import com.simonguest.BTPhotoTransfer.com.simonguest.btxfr.ServerThread;
+import com.fahim.lokman.butoothchatapp.R;
+import com.fahim.lokman.butoothchatapp.btxfr.ClientThread;
+import com.fahim.lokman.butoothchatapp.btxfr.MessageType;
+import com.fahim.lokman.butoothchatapp.btxfr.ProgressData;
+import com.fahim.lokman.butoothchatapp.btxfr.ServerThread;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
