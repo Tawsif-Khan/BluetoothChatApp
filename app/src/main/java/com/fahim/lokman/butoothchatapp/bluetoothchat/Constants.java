@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package TextChat;
+package com.fahim.lokman.butoothchatapp.bluetoothchat;
 
 /**
  * Defines several constants used between {@link BluetoothChatService} and the UI.

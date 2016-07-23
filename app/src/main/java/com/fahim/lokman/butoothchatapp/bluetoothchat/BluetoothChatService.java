@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package TextChat;
+package com.fahim.lokman.butoothchatapp.bluetoothchat;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -25,6 +25,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
+
 
 import java.io.IOException;
 import java.io.InputStream;
