@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.fahim.lokman.butoothchatapp.bluetoothchat;
+package com.fahim.lokman.butoothchatapp;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
@@ -32,16 +32,8 @@ import android.widget.Button;
 import android.widget.ListView;
 import android.widget.TextView;
 
-import com.example.android.common.logger.Log;
-
 import java.util.Set;
 
-/**
- * This Activity appears as a dialog. It lists any paired devices and
- * devices detected in the area after discovery. When a device is chosen
- * by the user, the MAC address of the device is sent back to the parent
- * Activity in the result Intent.
- */
 public class DeviceListActivity extends Activity {
 
     /**
@@ -143,7 +135,6 @@ public class DeviceListActivity extends Activity {
      * Start device discover with the BluetoothAdapter
      */
     private void doDiscovery() {
-        Log.d(TAG, "doDiscovery()");
 
         // Indicate scanning in the title
         setProgressBarIndeterminateVisibility(true);
@@ -180,7 +171,7 @@ public class DeviceListActivity extends Activity {
 
             // Set result and finish this Activity
             setResult(Activity.RESULT_OK, intent);
-            finish();
+            //finish();
         }
     };
 

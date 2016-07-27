@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.fahim.lokman.butoothchatapp.common.logger;
+package com.fahim.lokman.butoothchatapp.logger;
 
 import android.app.Activity;
 import android.content.Context;

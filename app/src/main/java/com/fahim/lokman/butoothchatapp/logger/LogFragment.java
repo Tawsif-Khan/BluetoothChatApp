@@ -29,7 +29,7 @@
  * limitations under the License.
  */
 
-package com.fahim.lokman.butoothchatapp.common.logger;
+package com.fahim.lokman.butoothchatapp.logger;
 
 import android.graphics.Typeface;
 import android.os.Bundle;
