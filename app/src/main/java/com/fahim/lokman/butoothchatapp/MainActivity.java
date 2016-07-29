@@ -72,11 +72,11 @@ public class MainActivity extends AppCompatActivity {
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
         // If the adapter is null, then Bluetooth is not supported
-//        if (mBluetoothAdapter == null) {
+        if (mBluetoothAdapter == null) {
 //            FragmentActivity activity = getActivity();
 //            Toast.makeText(activity, "Bluetooth is not available", Toast.LENGTH_LONG).show();
 //            activity.finish();
-//        }
+        }
 
         mConversationView = (ListView) findViewById(R.id.in);
         mOutEditText = (EditText) findViewById(R.id.edit_text_out);
