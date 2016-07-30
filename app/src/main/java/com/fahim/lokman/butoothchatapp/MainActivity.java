@@ -1,4 +1,4 @@
-package com.fahim.lokman.butoothchatapp;
+package com.fahim.lokman.bluetoothchatapp;
 
 import android.app.ActionBar;
 import android.app.Activity;
@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.v4.app.FragmentActivity;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
@@ -37,9 +38,7 @@ public class MainActivity extends AppCompatActivity {
     private EditText mOutEditText;
     private Button mSendButton;
 
-    /**
-     * Name of the connected device
-     */
+
     private String mConnectedDeviceName = null;
 
     /**
@@ -71,11 +70,11 @@ public class MainActivity extends AppCompatActivity {
 
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
-        // If the adapter is null, then Bluetooth is not supported
+         //If the adapter is null, then Bluetooth is not supported
         if (mBluetoothAdapter == null) {
-//            FragmentActivity activity = getActivity();
-//            Toast.makeText(activity, "Bluetooth is not available", Toast.LENGTH_LONG).show();
-//            activity.finish();
+            FragmentActivity activity = this;
+            Toast.makeText(activity, "Bluetooth is not available", Toast.LENGTH_LONG).show();
+            finish();
         }
 
         mConversationView = (ListView) findViewById(R.id.in);
