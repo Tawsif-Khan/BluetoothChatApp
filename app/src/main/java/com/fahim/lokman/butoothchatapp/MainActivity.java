@@ -8,9 +8,6 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.support.v4.app.FragmentActivity;
-import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -24,7 +21,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends Activity {
 
     private static final String TAG = "BluetoothChatFragment";
 
@@ -38,7 +35,9 @@ public class MainActivity extends AppCompatActivity {
     private EditText mOutEditText;
     private Button mSendButton;
 
-
+    /**
+     * Name of the connected device
+     */
     private String mConnectedDeviceName = null;
 
     /**
@@ -70,12 +69,12 @@ public class MainActivity extends AppCompatActivity {
 
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
-         //If the adapter is null, then Bluetooth is not supported
-        if (mBluetoothAdapter == null) {
-            FragmentActivity activity = this;
-            Toast.makeText(activity, "Bluetooth is not available", Toast.LENGTH_LONG).show();
-            finish();
-        }
+        // If the adapter is null, then Bluetooth is not supported
+//        if (mBluetoothAdapter == null) {
+//            FragmentActivity activity = getActivity();
+//            Toast.makeText(activity, "Bluetooth is not available", Toast.LENGTH_LONG).show();
+//            activity.finish();
+//        }
 
         mConversationView = (ListView) findViewById(R.id.in);
         mOutEditText = (EditText) findViewById(R.id.edit_text_out);

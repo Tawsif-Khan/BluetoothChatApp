@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.fahim.lokman.butoothchatapp;
+package com.fahim.lokman.bluetoothchatapp;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
