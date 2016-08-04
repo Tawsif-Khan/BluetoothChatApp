@@ -1,5 +1,7 @@
 <resources xmlns:xliff="http://schemas.android.com/tools">
-    <string name="app_name">Butooth Chat App</string>
+    <string name="app_name">Bluetooth Chat App</string>
+
+
     <!--  BluetoothChat -->
     <string name="send">Send</string>
     <string name="not_connected">You are not connected to a device</string>
