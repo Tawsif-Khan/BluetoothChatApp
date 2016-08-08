@@ -58,7 +58,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Newly discovered devices
      */
-    private BluetoothChatService mChatService = null;
+   // private BluetoothChatService mChatService = null;
 
     /**
      * Member object for the chat services
@@ -82,7 +82,7 @@ public class MainActivity extends AppCompatActivity {
         mConversationView = (ListView) findViewById(R.id.in);
         mOutEditText = (EditText) findViewById(R.id.edit_text_out);
         mSendButton = (Button) findViewById(R.id.button_send);
-
+        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         setupChat();
     }
 
@@ -108,7 +108,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // Initialize the BluetoothChatService to perform bluetooth connections
-        mChatService = new BluetoothChatService(this, mHandler);
+        //DeviceListActivity.mChatService = new BluetoothChatService(this, mHandler);
 
         // Initialize the buffer for outgoing messages
         mOutStringBuffer = new StringBuffer("");
@@ -116,10 +116,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-
     private void sendMessage(String message) {
         // Check that we're actually connected before trying anything
-        if (mChatService.getState() != BluetoothChatService.STATE_CONNECTED) {
+        if (DeviceListActivity.mChatService.getState() != BluetoothChatService.STATE_CONNECTED) {
             Toast.makeText(getApplicationContext(), R.string.not_connected, Toast.LENGTH_SHORT).show();
             return;
         }
@@ -128,7 +127,7 @@ public class MainActivity extends AppCompatActivity {
         if (message.length() > 0) {
             // Get the message bytes and tell the BluetoothChatService to write
             byte[] send = message.getBytes();
-            mChatService.write(send);
+            DeviceListActivity.mChatService.write(send);
 
             // Reset out string buffer to zero and clear the edit text field
             mOutStringBuffer.setLength(0);
@@ -277,7 +276,7 @@ public class MainActivity extends AppCompatActivity {
         // Get the BluetoothDevice object
         BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
         // Attempt to connect to the device
-        mChatService.connect(device, secure);
+        DeviceListActivity.mChatService.connect(device, secure);
     }
 
 
