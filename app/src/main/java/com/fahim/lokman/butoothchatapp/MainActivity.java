@@ -19,13 +19,18 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import nl.changer.polypicker.Config;
+import nl.changer.polypicker.ImagePickerActivity;
+
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "BluetoothChatFragment";
+    private static final int INTENT_REQUEST_GET_N_IMAGES = 14;
 
     // Intent request codes
     private static final int REQUEST_CONNECT_DEVICE_SECURE = 1;
@@ -36,16 +41,17 @@ public class MainActivity extends AppCompatActivity {
     private ListView mConversationView;
     private EditText mOutEditText;
     private Button mSendButton;
+    private ImageButton addImage;
 
     /**
      * Name of the connected device
      */
-    private String mConnectedDeviceName = null;
+    private static String mConnectedDeviceName = null;
 
     /**
      * Array adapter for the conversation thread
      */
-    private ArrayAdapter<String> mConversationArrayAdapter;
+    private static ArrayAdapter<String> mConversationArrayAdapter;
 
     /**
      * Local Bluetooth adapter
@@ -78,12 +84,19 @@ public class MainActivity extends AppCompatActivity {
 //            Toast.makeText(activity, "Bluetooth is not available", Toast.LENGTH_LONG).show();
 //            activity.finish();
 //        }
-
+        addImage = (ImageButton) findViewById(R.id.addImage);
         mConversationView = (ListView) findViewById(R.id.in);
         mOutEditText = (EditText) findViewById(R.id.edit_text_out);
         mSendButton = (Button) findViewById(R.id.button_send);
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         setupChat();
+
+        addImage.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                getNImages();
+            }
+        });
     }
 
     private void setupChat() {
@@ -108,18 +121,20 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // Initialize the BluetoothChatService to perform bluetooth connections
-        //DeviceListActivity.mChatService = new BluetoothChatService(this, mHandler);
 
         // Initialize the buffer for outgoing messages
         mOutStringBuffer = new StringBuffer("");
+
         connectDevice(getIntent(),true);
     }
+
 
 
     private void sendMessage(String message) {
         // Check that we're actually connected before trying anything
         if (DeviceListActivity.mChatService.getState() != BluetoothChatService.STATE_CONNECTED) {
             Toast.makeText(getApplicationContext(), R.string.not_connected, Toast.LENGTH_SHORT).show();
+            connectDevice(getIntent(),true);
             return;
         }
 
@@ -186,7 +201,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * The Handler that gets information back from the BluetoothChatService
      */
-    private final Handler mHandler = new Handler() {
+    public static final Handler mHandler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
 
@@ -194,15 +209,15 @@ public class MainActivity extends AppCompatActivity {
                 case Constants.MESSAGE_STATE_CHANGE:
                     switch (msg.arg1) {
                         case BluetoothChatService.STATE_CONNECTED:
-                            setStatus(getString(R.string.title_connected_to, mConnectedDeviceName));
-                            mConversationArrayAdapter.clear();
+                          //  setStatus(getString(R.string.title_connected_to, mConnectedDeviceName));
+                           // mConversationArrayAdapter.clear();
                             break;
                         case BluetoothChatService.STATE_CONNECTING:
-                            setStatus(R.string.title_connecting);
+                            //setStatus(R.string.title_connecting);
                             break;
                         case BluetoothChatService.STATE_LISTEN:
                         case BluetoothChatService.STATE_NONE:
-                            setStatus(R.string.title_not_connected);
+                            //setStatus(R.string.title_not_connected);
                             break;
                     }
                     break;
@@ -221,13 +236,9 @@ public class MainActivity extends AppCompatActivity {
                 case Constants.MESSAGE_DEVICE_NAME:
                     // save the connected device's name
                     mConnectedDeviceName = msg.getData().getString(Constants.DEVICE_NAME);
-                        Toast.makeText(getApplicationContext(), "Connected to "
-                                + mConnectedDeviceName, Toast.LENGTH_SHORT).show();
 
                     break;
                 case Constants.MESSAGE_TOAST:
-                        Toast.makeText(getApplicationContext(), msg.getData().getString(Constants.TOAST),
-                                Toast.LENGTH_SHORT).show();
 
                     break;
             }
@@ -277,9 +288,21 @@ public class MainActivity extends AppCompatActivity {
         BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
         // Attempt to connect to the device
         DeviceListActivity.mChatService.connect(device, secure);
+       // getActionBar().setTitle(device.getName());
     }
 
 
+    private void getNImages() {
+        Intent intent = new Intent(this, ImagePickerActivity.class);
+        Config config = new Config.Builder()
+                .setTabBackgroundColor(R.color.white)    // set tab background color. Default white.
+                .setTabSelectionIndicatorColor(R.color.blue)
+                .setCameraButtonColor(R.color.orange)
+                .setSelectionLimit(5)    // set photo selection limit. Default unlimited selection.
+                .build();
+        ImagePickerActivity.setConfig(config);
+        startActivityForResult(intent, INTENT_REQUEST_GET_N_IMAGES);
+    }
 
 
 
