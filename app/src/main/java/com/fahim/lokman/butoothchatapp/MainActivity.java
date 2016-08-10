@@ -2,27 +2,41 @@ package com.fahim.lokman.bluetoothchatapp;
 
 import android.app.ActionBar;
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
+import android.os.Parcelable;
+import android.provider.MediaStore;
 import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.KeyEvent;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.fahim.lokman.bluetoothchatapp.btxfr.ClientThread;
+import com.fahim.lokman.bluetoothchatapp.btxfr.MessageType;
+import com.fahim.lokman.bluetoothchatapp.btxfr.ProgressData;
+import com.fahim.lokman.bluetoothchatapp.btxfr.ServerThread;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 
 import nl.changer.polypicker.Config;
 import nl.changer.polypicker.ImagePickerActivity;
@@ -31,6 +45,9 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "BluetoothChatFragment";
     private static final int INTENT_REQUEST_GET_N_IMAGES = 14;
+//    private static final String TAG = "BTPHOTO/MainActivity";
+    private Spinner deviceSpinner;
+    private ProgressDialog progressDialog;
 
     // Intent request codes
     private static final int REQUEST_CONNECT_DEVICE_SECURE = 1;
@@ -69,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Member object for the chat services
      */
+    public BluetoothDevice device;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -89,14 +107,116 @@ public class MainActivity extends AppCompatActivity {
         mOutEditText = (EditText) findViewById(R.id.edit_text_out);
         mSendButton = (Button) findViewById(R.id.button_send);
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        String address = getIntent().getExtras()
+                .getString(DeviceListActivity.EXTRA_DEVICE_ADDRESS);
+        // Get the BluetoothDevice object
+        device = mBluetoothAdapter.getRemoteDevice(address);
+
         setupChat();
 
         addImage.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                MainApplication.clientThread = new ClientThread(device, MainApplication.clientHandler);
+                MainApplication.clientThread.start();
                 getNImages();
             }
         });
+
+        MainApplication.clientHandler = new Handler() {
+            @Override
+            public void handleMessage(Message message) {
+                switch (message.what) {
+                    case MessageType.READY_FOR_DATA: {
+                        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                        File file = new File(Environment.getExternalStorageDirectory(), MainApplication.TEMP_IMAGE_FILE_NAME);
+                        Uri outputFileUri = Uri.fromFile(file);
+                        takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, outputFileUri);
+                        //startActivityForResult(takePictureIntent, MainApplication.PICTURE_RESULT_CODE);
+                        break;
+                    }
+
+                    case MessageType.COULD_NOT_CONNECT: {
+                        Toast.makeText(MainActivity.this, "Could not connect to the paired device", Toast.LENGTH_SHORT).show();
+                        break;
+                    }
+
+                    case MessageType.SENDING_DATA: {
+                        progressDialog = new ProgressDialog(MainActivity.this);
+                        progressDialog.setMessage("Sending photo...");
+                        progressDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
+                        progressDialog.show();
+                        break;
+                    }
+
+                    case MessageType.DATA_SENT_OK: {
+                        if (progressDialog != null) {
+                            progressDialog.dismiss();
+                            progressDialog = null;
+                        }
+                        Toast.makeText(MainActivity.this, "Photo was sent successfully", Toast.LENGTH_SHORT).show();
+                        break;
+                    }
+
+                    case MessageType.DIGEST_DID_NOT_MATCH: {
+                        Toast.makeText(MainActivity.this, "Photo was sent, but didn't go through correctly", Toast.LENGTH_SHORT).show();
+                        break;
+                    }
+                }
+            }
+        };
+
+
+        MainApplication.serverHandler = new Handler() {
+            @Override
+            public void handleMessage(Message message) {
+                switch (message.what) {
+                    case MessageType.DATA_RECEIVED: {
+                        if (progressDialog != null) {
+                            progressDialog.dismiss();
+                            progressDialog = null;
+                        }
+
+                        BitmapFactory.Options options = new BitmapFactory.Options();
+                        options.inSampleSize = 2;
+                        Bitmap image = BitmapFactory.decodeByteArray(((byte[]) message.obj), 0, ((byte[]) message.obj).length, options);
+                        //ImageView imageView = (ImageView) findViewById(R.id.imageView);
+                       // imageView.setImageBitmap(image);
+                        break;
+                    }
+
+                    case MessageType.DIGEST_DID_NOT_MATCH: {
+                        Toast.makeText(MainActivity.this, "Photo was received, but didn't come through correctly", Toast.LENGTH_SHORT).show();
+                        break;
+                    }
+
+                    case MessageType.DATA_PROGRESS_UPDATE: {
+                        // some kind of update
+                        MainApplication.progressData = (ProgressData) message.obj;
+                        double pctRemaining = 100 - (((double) MainApplication.progressData.remainingSize / MainApplication.progressData.totalSize) * 100);
+                        if (progressDialog == null) {
+                            progressDialog = new ProgressDialog(MainActivity.this);
+                            progressDialog.setMessage("Receiving photo...");
+                            progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+                            progressDialog.setProgress(0);
+                            progressDialog.setMax(100);
+                            progressDialog.show();
+                        }
+                        progressDialog.setProgress((int) Math.floor(pctRemaining));
+                        break;
+                    }
+
+                    case MessageType.INVALID_HEADER: {
+                        Toast.makeText(MainActivity.this, "Photo was sent, but the header was formatted incorrectly", Toast.LENGTH_SHORT).show();
+                        break;
+                    }
+                }
+            }
+        };
+
+        MainApplication.serverThread = new ServerThread(MainApplication.adapter, MainApplication.serverHandler);
+        MainApplication.serverThread.start();
+
     }
 
     private void setupChat() {
@@ -246,6 +366,58 @@ public class MainActivity extends AppCompatActivity {
     };
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
+
+        if (requestCode == INTENT_REQUEST_GET_N_IMAGES) {
+
+
+            if (resultCode == RESULT_OK) {
+                Log.v(TAG, "Photo acquired from camera intent");
+                try {
+
+                    Parcelable[] parcelableUris = data.getParcelableArrayExtra(ImagePickerActivity.EXTRA_IMAGE_URIS);
+
+
+                    if (parcelableUris == null) {
+                        return;
+                    }
+
+                    Toast.makeText(getApplicationContext(),parcelableUris.length+"",Toast.LENGTH_LONG).show();
+                    // Java doesn't allow array casting, this is a little hack
+                    Uri[] uris = new Uri[parcelableUris.length];
+                    System.arraycopy(parcelableUris, 0, uris, 0, parcelableUris.length);
+                    Uri uri = Uri.fromFile(new File(uris[0].toString()));
+                    Bitmap image = MediaStore.Images.Media.getBitmap(this.getContentResolver(),uri);
+
+
+                    Toast.makeText(getApplicationContext(),"done",Toast.LENGTH_LONG).show();
+//                    File file = new File(Environment.getExternalStorageDirectory(), MainApplication.TEMP_IMAGE_FILE_NAME);
+//                    BitmapFactory.Options options = new BitmapFactory.Options();
+//                    options.inSampleSize = 2;
+//                    Bitmap image = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+
+                    ByteArrayOutputStream compressedImageStream = new ByteArrayOutputStream();
+                    image.compress(Bitmap.CompressFormat.JPEG, MainApplication.IMAGE_QUALITY, compressedImageStream);
+                    byte[] compressedImage = compressedImageStream.toByteArray();
+                    Log.v(TAG, "Compressed image size: " + compressedImage.length);
+
+                    // Invoke client thread to send
+                    Message message = new Message();
+                    message.obj = compressedImage;
+                    MainApplication.clientThread.incomingHandler.sendMessage(message);
+
+                    // Display the image locally
+                    ImageView imageView = (ImageView) findViewById(R.id.imageView);
+                   // imageView.setImageBitmap(image);
+
+                } catch (Exception e) {
+                    Log.d(TAG, e.toString());
+
+                    Toast.makeText(getApplicationContext(),e+"",Toast.LENGTH_LONG).show();
+                }
+            }
+            return;
+        }
+
         switch (requestCode) {
             case REQUEST_CONNECT_DEVICE_SECURE:
                 // When DeviceListActivity returns with a device to connect
@@ -303,6 +475,7 @@ public class MainActivity extends AppCompatActivity {
         ImagePickerActivity.setConfig(config);
         startActivityForResult(intent, INTENT_REQUEST_GET_N_IMAGES);
     }
+
 
 
 
