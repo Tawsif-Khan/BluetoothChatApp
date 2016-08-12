@@ -59,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
     private EditText mOutEditText;
     private Button mSendButton;
     private ImageButton addImage;
+    public static TextView stateView;
 
     /**
      * Name of the connected device
@@ -106,6 +107,7 @@ public class MainActivity extends AppCompatActivity {
         mConversationView = (ListView) findViewById(R.id.in);
         mOutEditText = (EditText) findViewById(R.id.edit_text_out);
         mSendButton = (Button) findViewById(R.id.button_send);
+        stateView = (TextView) findViewById(R.id.stateView);
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         String address = getIntent().getExtras()
                 .getString(DeviceListActivity.EXTRA_DEVICE_ADDRESS);
@@ -331,13 +333,14 @@ public class MainActivity extends AppCompatActivity {
                         case BluetoothChatService.STATE_CONNECTED:
                           //  setStatus(getString(R.string.title_connected_to, mConnectedDeviceName));
                            // mConversationArrayAdapter.clear();
+                            stateView.setText(R.string.title_connected_to);
                             break;
                         case BluetoothChatService.STATE_CONNECTING:
-                            //setStatus(R.string.title_connecting);
+                            stateView.setText(R.string.title_connecting);
                             break;
                         case BluetoothChatService.STATE_LISTEN:
                         case BluetoothChatService.STATE_NONE:
-                            //setStatus(R.string.title_not_connected);
+                           // MainActivity.stateView.setText(R.string.title_not_connected);
                             break;
                     }
                     break;
@@ -381,7 +384,7 @@ public class MainActivity extends AppCompatActivity {
                         return;
                     }
 
-                    Toast.makeText(getApplicationContext(),parcelableUris.length+"",Toast.LENGTH_LONG).show();
+                    //Toast.makeText(getApplicationContext(),parcelableUris.length+"",Toast.LENGTH_LONG).show();
                     // Java doesn't allow array casting, this is a little hack
                     Uri[] uris = new Uri[parcelableUris.length];
                     System.arraycopy(parcelableUris, 0, uris, 0, parcelableUris.length);
@@ -389,7 +392,7 @@ public class MainActivity extends AppCompatActivity {
                     Bitmap image = MediaStore.Images.Media.getBitmap(this.getContentResolver(),uri);
 
 
-                    Toast.makeText(getApplicationContext(),"done",Toast.LENGTH_LONG).show();
+                    //Toast.makeText(getApplicationContext(),"done",Toast.LENGTH_LONG).show();
 //                    File file = new File(Environment.getExternalStorageDirectory(), MainApplication.TEMP_IMAGE_FILE_NAME);
 //                    BitmapFactory.Options options = new BitmapFactory.Options();
 //                    options.inSampleSize = 2;
@@ -460,6 +463,7 @@ public class MainActivity extends AppCompatActivity {
         BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
         // Attempt to connect to the device
         DeviceListActivity.mChatService.connect(device, secure);
+        Toast.makeText(getApplicationContext(),address,Toast.LENGTH_LONG).show();
        // getActionBar().setTitle(device.getName());
     }
 
