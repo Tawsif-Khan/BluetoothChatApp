@@ -5,6 +5,8 @@ import android.app.Activity;
 import android.app.ProgressDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -30,13 +32,21 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.fahim.lokman.bluetoothchatapp.adapter.MessageAdapter;
 import com.fahim.lokman.bluetoothchatapp.btxfr.ClientThread;
 import com.fahim.lokman.bluetoothchatapp.btxfr.MessageType;
 import com.fahim.lokman.bluetoothchatapp.btxfr.ProgressData;
 import com.fahim.lokman.bluetoothchatapp.btxfr.ServerThread;
+import com.fahim.lokman.bluetoothchatapp.contents.Constant;
+import com.fahim.lokman.bluetoothchatapp.contents.MessageContents;
+import com.fahim.lokman.bluetoothchatapp.dbHelper.DBHandler;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Calendar;
 
 import nl.changer.polypicker.Config;
 import nl.changer.polypicker.ImagePickerActivity;
@@ -60,6 +70,8 @@ public class MainActivity extends AppCompatActivity {
     private Button mSendButton;
     private ImageButton addImage;
     public static TextView stateView;
+    public static String CONNECTED_DEVICE;
+    public static String CONNECTED_DEVICE_ADDRESS;
 
     /**
      * Name of the connected device
@@ -70,13 +82,15 @@ public class MainActivity extends AppCompatActivity {
      * Array adapter for the conversation thread
      */
     private static ArrayAdapter<String> mConversationArrayAdapter;
-
+    private static MessageAdapter messageAdapter;
+    public static ArrayList<MessageContents> messageContentses = new ArrayList<>();
+    public static DBHandler dbHandler;
     /**
      * Local Bluetooth adapter
      */
     private BluetoothAdapter mBluetoothAdapter = null;
     /**
-     * String buffer for outgoing messages
+     * String buffer for outgoing messageContentses
      */
     private StringBuffer mOutStringBuffer;
     /**
@@ -97,18 +111,19 @@ public class MainActivity extends AppCompatActivity {
 //        setSupportActionBar(toolbar);
 
 
+        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         // If the adapter is null, then Bluetooth is not supported
-//        if (mBluetoothAdapter == null) {
-//            FragmentActivity activity = getActivity();
-//            Toast.makeText(activity, "Bluetooth is not available", Toast.LENGTH_LONG).show();
-//            activity.finish();
-//        }
+        if (mBluetoothAdapter == null) {
+            Toast.makeText(getApplicationContext(), "Bluetooth is not available", Toast.LENGTH_LONG).show();
+            finish();
+        }
+        dbHandler = new DBHandler(this);
+
         addImage = (ImageButton) findViewById(R.id.addImage);
         mConversationView = (ListView) findViewById(R.id.in);
         mOutEditText = (EditText) findViewById(R.id.edit_text_out);
         mSendButton = (Button) findViewById(R.id.button_send);
         stateView = (TextView) findViewById(R.id.stateView);
-        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         String address = getIntent().getExtras()
                 .getString(DeviceListActivity.EXTRA_DEVICE_ADDRESS);
         // Get the BluetoothDevice object
@@ -119,6 +134,7 @@ public class MainActivity extends AppCompatActivity {
         addImage.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                sendMessage("startServerThread");
                 MainApplication.clientThread = new ClientThread(device, MainApplication.clientHandler);
                 MainApplication.clientThread.start();
                 getNImages();
@@ -182,6 +198,8 @@ public class MainActivity extends AppCompatActivity {
                         BitmapFactory.Options options = new BitmapFactory.Options();
                         options.inSampleSize = 2;
                         Bitmap image = BitmapFactory.decodeByteArray(((byte[]) message.obj), 0, ((byte[]) message.obj).length, options);
+                        String path = saveToInternalStorage(image);
+                        toast(path);
                         //ImageView imageView = (ImageView) findViewById(R.id.imageView);
                        // imageView.setImageBitmap(image);
                         break;
@@ -216,18 +234,18 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
-        MainApplication.serverThread = new ServerThread(MainApplication.adapter, MainApplication.serverHandler);
-        MainApplication.serverThread.start();
+
 
     }
 
     private void setupChat() {
-        Log.d(TAG, "setupChat()");
+
+        //Load data into arraylist
+        messageContentses = dbHandler.getAllMessages(DeviceListActivity.DEVICE_ADDRESS,CONNECTED_DEVICE_ADDRESS);
 
         // Initialize the array adapter for the conversation thread
-        mConversationArrayAdapter = new ArrayAdapter<String>(this, R.layout.message);
-
-        mConversationView.setAdapter(mConversationArrayAdapter);
+        messageAdapter = new MessageAdapter(this, messageContentses);
+        mConversationView.setAdapter(messageAdapter);
 
         // Initialize the compose field with a listener for the return key
         mOutEditText.setOnEditorActionListener(mWriteListener);
@@ -244,7 +262,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Initialize the BluetoothChatService to perform bluetooth connections
 
-        // Initialize the buffer for outgoing messages
+        // Initialize the buffer for outgoing messageContentses
         mOutStringBuffer = new StringBuffer("");
 
         connectDevice(getIntent(),true);
@@ -333,14 +351,14 @@ public class MainActivity extends AppCompatActivity {
                         case BluetoothChatService.STATE_CONNECTED:
                           //  setStatus(getString(R.string.title_connected_to, mConnectedDeviceName));
                            // mConversationArrayAdapter.clear();
-                            stateView.setText(R.string.title_connected_to);
+                            stateView.setText("Connected to - " + MainActivity.CONNECTED_DEVICE);
                             break;
                         case BluetoothChatService.STATE_CONNECTING:
                             stateView.setText(R.string.title_connecting);
                             break;
                         case BluetoothChatService.STATE_LISTEN:
                         case BluetoothChatService.STATE_NONE:
-                           // MainActivity.stateView.setText(R.string.title_not_connected);
+                            //stateView.setText(R.string.title_not_connected);
                             break;
                     }
                     break;
@@ -348,13 +366,37 @@ public class MainActivity extends AppCompatActivity {
                     byte[] writeBuf = (byte[]) msg.obj;
                     // construct a string from the buffer
                     String writeMessage = new String(writeBuf);
-                    mConversationArrayAdapter.add("Me:  " + writeMessage);
+                    dbHandler.saveMessage(writeMessage,DeviceListActivity.DEVICE_ADDRESS,CONNECTED_DEVICE, Constant.TEXTS);
+
+                    MessageContents message = new MessageContents();
+                    message.message = writeMessage;
+                    message.receiver = CONNECTED_DEVICE_ADDRESS;
+                    message.sender = DeviceListActivity.DEVICE_ADDRESS;
+                    message.type = Constant.TEXTS;
+
+                    messageContentses.add(message);
+                    messageAdapter.notifyDataSetChanged();
+
                     break;
                 case Constants.MESSAGE_READ:
                     byte[] readBuf = (byte[]) msg.obj;
                     // construct a string from the valid bytes in the buffer
                     String readMessage = new String(readBuf, 0, msg.arg1);
-                    mConversationArrayAdapter.add(mConnectedDeviceName + ":  " + readMessage);
+                    if(readMessage.equals("startServerThread")) {
+                        MainApplication.serverThread = new ServerThread(MainApplication.adapter, MainApplication.serverHandler);
+                        MainApplication.serverThread.start();
+
+                    }else{
+                        dbHandler.saveMessage(readMessage, CONNECTED_DEVICE, DeviceListActivity.DEVICE_ADDRESS, Constant.TEXTS);
+                        MessageContents messageread = new MessageContents();
+                        messageread.message = readMessage;
+                        messageread.sender = CONNECTED_DEVICE_ADDRESS;
+                        messageread.receiver = DeviceListActivity.DEVICE_ADDRESS;
+                        messageread.type = Constant.TEXTS;
+
+                        messageContentses.add(messageread);
+                        messageAdapter.notifyDataSetChanged();
+                    }
                     break;
                 case Constants.MESSAGE_DEVICE_NAME:
                     // save the connected device's name
@@ -408,9 +450,7 @@ public class MainActivity extends AppCompatActivity {
                     message.obj = compressedImage;
                     MainApplication.clientThread.incomingHandler.sendMessage(message);
 
-                    // Display the image locally
-                    ImageView imageView = (ImageView) findViewById(R.id.imageView);
-                   // imageView.setImageBitmap(image);
+
 
                 } catch (Exception e) {
                     Log.d(TAG, e.toString());
@@ -463,8 +503,9 @@ public class MainActivity extends AppCompatActivity {
         BluetoothDevice device = mBluetoothAdapter.getRemoteDevice(address);
         // Attempt to connect to the device
         DeviceListActivity.mChatService.connect(device, secure);
-        Toast.makeText(getApplicationContext(),address,Toast.LENGTH_LONG).show();
-       // getActionBar().setTitle(device.getName());
+        CONNECTED_DEVICE = device.getName();
+        CONNECTED_DEVICE_ADDRESS = address;
+
     }
 
 
@@ -474,14 +515,40 @@ public class MainActivity extends AppCompatActivity {
                 .setTabBackgroundColor(R.color.white)    // set tab background color. Default white.
                 .setTabSelectionIndicatorColor(R.color.blue)
                 .setCameraButtonColor(R.color.orange)
-                .setSelectionLimit(5)    // set photo selection limit. Default unlimited selection.
+                .setSelectionLimit(1)    // set photo selection limit. Default unlimited selection.
                 .build();
         ImagePickerActivity.setConfig(config);
         startActivityForResult(intent, INTENT_REQUEST_GET_N_IMAGES);
     }
 
 
+    private String saveToInternalStorage(Bitmap bitmapImage){
+        ContextWrapper cw = new ContextWrapper(getApplicationContext());
+        // path to /data/data/yourapp/app_data/imageDir
+        File directory = cw.getDir("/", Context.MODE_PRIVATE);
+        // Create imageDir
+        Calendar calendar = Calendar.getInstance();
+        File mypath=new File(directory,calendar.getTimeInMillis()+".png");
 
+        FileOutputStream fos = null;
+        try {
+            fos = new FileOutputStream(mypath);
+            // Use the compress method on the BitMap object to write image to the OutputStream
+            bitmapImage.compress(Bitmap.CompressFormat.PNG, 100, fos);
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                fos.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return directory.getAbsolutePath();
+    }
 
+    public void toast(String msg){
+        Toast.makeText(getApplicationContext(),msg,Toast.LENGTH_SHORT).show();
+    }
 
 }
