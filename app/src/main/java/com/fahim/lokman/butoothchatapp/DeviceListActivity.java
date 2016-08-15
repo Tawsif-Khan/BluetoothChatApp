@@ -50,6 +50,7 @@ public class DeviceListActivity extends Activity {
      */
     private BluetoothAdapter mBtAdapter;
 
+    public static String DEVICE_ADDRESS;
     /**
      * Newly discovered devices
      */
@@ -69,9 +70,11 @@ public class DeviceListActivity extends Activity {
 
 
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        DEVICE_ADDRESS = mBluetoothAdapter.getAddress();
 
         // Initialize the button to perform device discovery
         Button scanButton = (Button) findViewById(R.id.button_scan);
+        MainActivity.stateView = (TextView) findViewById(R.id.stateView);
         scanButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 doDiscovery();
@@ -135,10 +138,11 @@ public class DeviceListActivity extends Activity {
         }
 
         if (mChatService != null) {
-           // mChatService.stop();
+            mChatService.stop();
         }
         // Unregister broadcast listeners
-        //this.unregisterReceiver(mReceiver);
+        this.unregisterReceiver(mReceiver);
+        Toast.makeText(getApplicationContext(),"Destroy",Toast.LENGTH_SHORT).show();
     }
 
     /**
