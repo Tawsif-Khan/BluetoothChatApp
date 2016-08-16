@@ -44,7 +44,7 @@ public class DeviceListActivity extends Activity {
     /**
      * Local Bluetooth adapter
      */
-    private BluetoothAdapter mBluetoothAdapter = null;
+    // private BluetoothAdapter mBluetoothAdapter = null;
     /**
      * Member fields
      */
@@ -54,7 +54,7 @@ public class DeviceListActivity extends Activity {
     /**
      * Newly discovered devices
      */
-    public static BluetoothChatService mChatService = null;
+
     private ArrayAdapter<String> mNewDevicesArrayAdapter;
 
     @Override
@@ -66,11 +66,18 @@ public class DeviceListActivity extends Activity {
         setContentView(R.layout.activity_device_list);
 
         // Set result CANCELED in case the user backs out
-        setResult(Activity.RESULT_CANCELED);
+        //setResult(Activity.RESULT_CANCELED);
 
 
-        mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        DEVICE_ADDRESS = mBluetoothAdapter.getAddress();
+        // Get the local Bluetooth adapter
+        mBtAdapter = BluetoothAdapter.getDefaultAdapter();
+        DEVICE_ADDRESS = mBtAdapter.getAddress();
+
+        // If the adapter is null, then Bluetooth is not supported
+        if (mBtAdapter == null) {
+            Toast.makeText(getApplicationContext(), "Bluetooth is not available", Toast.LENGTH_LONG).show();
+            finish();
+        }
 
         // Initialize the button to perform device discovery
         Button scanButton = (Button) findViewById(R.id.button_scan);
@@ -82,21 +89,7 @@ public class DeviceListActivity extends Activity {
             }
         });
 
-        // Initialize array adapters. One for already paired devices and
-        // one for newly discovered devices
-        ArrayAdapter<String> pairedDevicesArrayAdapter =
-                new ArrayAdapter<String>(this, R.layout.device_name);
-        mNewDevicesArrayAdapter = new ArrayAdapter<String>(this, R.layout.device_name);
 
-        // Find and set up the ListView for paired devices
-        ListView pairedListView = (ListView) findViewById(R.id.paired_devices);
-        pairedListView.setAdapter(pairedDevicesArrayAdapter);
-        pairedListView.setOnItemClickListener(mDeviceClickListener);
-
-        // Find and set up the ListView for newly discovered devices
-        ListView newDevicesListView = (ListView) findViewById(R.id.new_devices);
-        newDevicesListView.setAdapter(mNewDevicesArrayAdapter);
-        newDevicesListView.setOnItemClickListener(mDeviceClickListener);
 
         // Register for broadcasts when a device is discovered
         IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
@@ -106,25 +99,11 @@ public class DeviceListActivity extends Activity {
         filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
         this.registerReceiver(mReceiver, filter);
 
-        // Get the local Bluetooth adapter
-        mBtAdapter = BluetoothAdapter.getDefaultAdapter();
 
-        // Get a set of currently paired devices
-        Set<BluetoothDevice> pairedDevices = mBtAdapter.getBondedDevices();
 
-        // If there are paired devices, add each one to the ArrayAdapter
-        if (pairedDevices.size() > 0) {
-            findViewById(R.id.title_paired_devices).setVisibility(View.VISIBLE);
-            for (BluetoothDevice device : pairedDevices) {
-                pairedDevicesArrayAdapter.add(device.getName() + "\n" + device.getAddress());
-            }
-        } else {
-            String noDevices = getResources().getText(R.string.none_paired).toString();
-            pairedDevicesArrayAdapter.add(noDevices);
-        }
 
-        DeviceListActivity.mChatService = new BluetoothChatService(this, MainActivity.mHandler);
 
+        startChatService();
     }
 
 
@@ -137,12 +116,13 @@ public class DeviceListActivity extends Activity {
             mBtAdapter.cancelDiscovery();
         }
 
-        if (mChatService != null) {
-            mChatService.stop();
+        if (MainApplication.mChatService != null) {
+            MainApplication.mChatService.stop();
+
+            Toast.makeText(getApplicationContext(),"destroy",Toast.LENGTH_SHORT).show();
         }
         // Unregister broadcast listeners
         this.unregisterReceiver(mReceiver);
-        Toast.makeText(getApplicationContext(),"Destroy",Toast.LENGTH_SHORT).show();
     }
 
     /**
@@ -180,11 +160,11 @@ public class DeviceListActivity extends Activity {
             String address = info.substring(info.length() - 17);
 
             // Create the result Intent and include the MAC address
-            Intent intent = new Intent();
+            Intent intent;
 
             // Set result and finish this Activity
             //setResult(Activity.RESULT_OK, intent);
-            intent = new Intent(DeviceListActivity.this,MainActivity.class);
+            intent = new Intent(DeviceListActivity.this, MainActivity.class);
             intent.putExtra(EXTRA_DEVICE_ADDRESS, address);
             startActivity(intent);
 
@@ -224,30 +204,17 @@ public class DeviceListActivity extends Activity {
     @Override
     public void onStart() {
         super.onStart();
+
         // If BT is not on, request that it be enabled.
         // setupChat() will then be called during onActivityResult
-        if (!mBluetoothAdapter.isEnabled()) {
+        if (!mBtAdapter.isEnabled()) {
             Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
             // Otherwise, setup the chat session
         }
     }
 
-    @Override
-    public void onResume() {
-        super.onResume();
 
-        // Performing this check in onResume() covers the case in which BT was
-        // not enabled during onStart(), so we were paused to enable it...
-        // onResume() will be called when ACTION_REQUEST_ENABLE activity returns.
-        if (mChatService != null) {
-            // Only if the state is STATE_NONE, do we know that we haven't started already
-            if (mChatService.getState() == BluetoothChatService.STATE_NONE) {
-                // Start the Bluetooth chat services
-                mChatService.start();
-            }
-        }
-    }
 
 
     @Override
@@ -286,7 +253,7 @@ public class DeviceListActivity extends Activity {
      * Makes this device discoverable.
      */
     private void ensureDiscoverable() {
-        if (mBluetoothAdapter.getScanMode() !=
+        if (mBtAdapter.getScanMode() !=
                 BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
             Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
             discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300);
@@ -295,6 +262,71 @@ public class DeviceListActivity extends Activity {
     }
 
 
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        switch (requestCode) {
+            case REQUEST_ENABLE_BT:
+                // When the request to enable Bluetooth returns
+                if (resultCode == Activity.RESULT_OK) {
+                    // Bluetooth is now enabled, so set up a chat session
+                    startChatService();
+
+                } else {
+                    // User did not enable Bluetooth or an error occurred
+                    Log.d(TAG, "BT not enabled");
+                    Toast.makeText(getApplicationContext(), R.string.bt_not_enabled_leaving,
+                            Toast.LENGTH_SHORT).show();
+                    finish();
+                }
+        }
+    }
+
+    public void startChatService(){
+
+        if(mBtAdapter.isEnabled()) {
+            setPairedDevices();
+            // Initialize the BluetoothChatService to perform bluetooth connections
+            MainApplication.mChatService = new BluetoothChatService(this, MainActivity.mHandler);
+            if (MainApplication.mChatService != null) {
+                // Only if the state is STATE_NONE, do we know that we haven't started already
+                if (MainApplication.mChatService.getState() == BluetoothChatService.STATE_NONE) {
+                    // Start the Bluetooth chat services
+                    MainApplication.mChatService.start();
+                }
+            }
+        }
+    }
+
+    public void setPairedDevices(){
+        // Initialize array adapters. One for already paired devices and
+        // one for newly discovered devices
+        ArrayAdapter<String> pairedDevicesArrayAdapter =
+                new ArrayAdapter<String>(this, R.layout.device_name);
+        mNewDevicesArrayAdapter = new ArrayAdapter<String>(this, R.layout.device_name);
+
+        // Find and set up the ListView for paired devices
+        ListView pairedListView = (ListView) findViewById(R.id.paired_devices);
+        pairedListView.setAdapter(pairedDevicesArrayAdapter);
+        pairedListView.setOnItemClickListener(mDeviceClickListener);
+
+        // Find and set up the ListView for newly discovered devices
+        ListView newDevicesListView = (ListView) findViewById(R.id.new_devices);
+        newDevicesListView.setAdapter(mNewDevicesArrayAdapter);
+        newDevicesListView.setOnItemClickListener(mDeviceClickListener);
+
+        // Get a set of currently paired devices
+        Set<BluetoothDevice> pairedDevices = mBtAdapter.getBondedDevices();
+
+        // If there are paired devices, add each one to the ArrayAdapter
+        if (pairedDevices.size() > 0) {
+            findViewById(R.id.title_paired_devices).setVisibility(View.VISIBLE);
+            for (BluetoothDevice device : pairedDevices) {
+                pairedDevicesArrayAdapter.add(device.getName() + "\n" + device.getAddress());
+            }
+        } else {
+            String noDevices = getResources().getText(R.string.none_paired).toString();
+            pairedDevicesArrayAdapter.add(noDevices);
+        }
+    }
 
 
 }
