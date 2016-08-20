@@ -19,9 +19,13 @@ import android.os.Parcelable;
 import android.provider.MediaStore;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.animation.Animation;
+import android.view.animation.AnimationUtils;
 import android.view.inputmethod.EditorInfo;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -30,6 +34,8 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
+import android.widget.RelativeLayout;
+import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -42,9 +48,14 @@ import com.fahim.lokman.bluetoothchatapp.btxfr.ServerThread;
 import com.fahim.lokman.bluetoothchatapp.contents.Constant;
 import com.fahim.lokman.bluetoothchatapp.contents.MessageContents;
 import com.fahim.lokman.bluetoothchatapp.dbHelper.DBHandler;
+import com.google.android.gms.appindexing.Action;
+import com.google.android.gms.appindexing.AppIndex;
+import com.google.android.gms.common.api.GoogleApiClient;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -57,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "BluetoothChatFragment";
     private static final int INTENT_REQUEST_GET_N_IMAGES = 14;
-//    private static final String TAG = "BTPHOTO/MainActivity";
+    //    private static final String TAG = "BTPHOTO/MainActivity";
     private Spinner deviceSpinner;
     private ProgressDialog progressDialog;
 
@@ -65,17 +76,23 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_CONNECT_DEVICE_SECURE = 1;
     private static final int REQUEST_CONNECT_DEVICE_INSECURE = 2;
     private static final int REQUEST_ENABLE_BT = 3;
+    public static final String VOICE = "ITISAVOICEMESSAGE";
+    public static final String PHOTO = "ITISAPHOTOMESSAGE";
 
     // Layout Views
     private ListView mConversationView;
     private EditText mOutEditText;
-    private ImageButton mSendButton;
+    public static ImageButton mSendButton;
+    public static RelativeLayout statusBar;
     private ImageButton addImage;
-    public static TextView stateView,tryAgainView;
+    public static ImageButton recordingButton;
+    public static TextView stateView, tryAgainView;
+    public static SeekBar seekbar;
     public static ProgressBar pb;
     public static String CONNECTED_DEVICE;
     public static String CONNECTED_DEVICE_ADDRESS;
-    public static String lastSentImage= "";
+    public static String lastSentImage = "";
+    public static String FLAG;
 
     /**
      * Name of the connected device
@@ -100,11 +117,17 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Newly discovered devices
      */
-   // private BluetoothChatService mChatService = null;
+    public static VoiceMessage voiceMessage;
+    public static Animation show,hide;
+    /**
+     * ATTENTION: This was auto-generated to implement the App Indexing API.
+     * See https://g.co/AppIndexing/AndroidStudio for more information.
+     */
+    private GoogleApiClient client;
 
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
@@ -119,29 +142,52 @@ public class MainActivity extends AppCompatActivity {
 
 
         dbHandler = new DBHandler(this);
+        voiceMessage = new VoiceMessage();
+        show = AnimationUtils.loadAnimation(this,R.anim.show);
+        hide = AnimationUtils.loadAnimation(this,R.anim.hide);
 
         addImage = (ImageButton) findViewById(R.id.addImage);
         mConversationView = (ListView) findViewById(R.id.in);
         mOutEditText = (EditText) findViewById(R.id.edit_text_out);
         mSendButton = (ImageButton) findViewById(R.id.button_send);
+        recordingButton = (ImageButton) findViewById(R.id.record);
+        seekbar = (SeekBar) findViewById(R.id.seekbar);
+        statusBar = (RelativeLayout) findViewById(R.id.statusBar);
+
         stateView = (TextView) findViewById(R.id.stateView);
         tryAgainView = (TextView) findViewById(R.id.tryAgain);
         pb = (ProgressBar) findViewById(R.id.progressBar);
 
+        statusBar.setAnimation(show);
+        show.start();
 
         setupChat();
         setInvisible(tryAgainView);
+        setInvisible(mSendButton);
+        setInvisible(seekbar);
+
+        recordingButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                startClientThread();
+
+                if (voiceMessage.mediaRecorder == null) {
+                    voiceMessage.initializeMediaRecord();
+                }
+                lastSentImage = voiceMessage.getVoiceStoragePath();
+                voiceMessage.startAudioRecording();
+                setInvisible(recordingButton);
+                setVisible(mSendButton);
+            }
+        });
 
         addImage.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-
-                if(MainApplication.clientThread != null){
-                    MainApplication.clientThread.cancel();
-                }
-                MainApplication.clientThread = new ClientThread(mBluetoothAdapter.getRemoteDevice(CONNECTED_DEVICE_ADDRESS), MainApplication.clientHandler);
-                MainApplication.clientThread.start();
-                //toast("client thread");
+                FLAG = PHOTO;
+                sendMessage(PHOTO);
+                startClientThread();
                 getNImages();
             }
         });
@@ -149,7 +195,7 @@ public class MainActivity extends AppCompatActivity {
         tryAgainView.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                connectDevice(getIntent(),true);
+                connectDevice(getIntent(), true);
             }
         });
 
@@ -162,7 +208,7 @@ public class MainActivity extends AppCompatActivity {
                         File file = new File(Environment.getExternalStorageDirectory(), MainApplication.TEMP_IMAGE_FILE_NAME);
                         Uri outputFileUri = Uri.fromFile(file);
                         takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, outputFileUri);
-                       // startActivityForResult(takePictureIntent, MainApplication.PICTURE_RESULT_CODE);
+                        // startActivityForResult(takePictureIntent, MainApplication.PICTURE_RESULT_CODE);
                         break;
                     }
 
@@ -172,30 +218,40 @@ public class MainActivity extends AppCompatActivity {
                     }
 
                     case MessageType.SENDING_DATA: {
-                        progressDialog = new ProgressDialog(MainActivity.this);
-                        progressDialog.setMessage("Sending photo...");
-                        progressDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
-                        progressDialog.show();
+                        stateView.setText("Sending");
+                        setVisible(pb);
+                        statusBar.setAnimation(show);
+                        show.start();
                         break;
                     }
 
                     case MessageType.DATA_SENT_OK: {
-                        if (progressDialog != null) {
-                            progressDialog.dismiss();
-                            progressDialog = null;
+
+
+                        String type = "";
+                        String path = "";
+                        if (FLAG.equals(PHOTO)) {
+                            type = Constant.PHOTO;
+                        } else {
+                            type = Constant.VOICE;
                         }
-                        dbHandler.saveMessage(lastSentImage,DeviceListActivity.DEVICE_ADDRESS,CONNECTED_DEVICE_ADDRESS, Constant.PHOTO);
+
+                        dbHandler.saveMessage(lastSentImage, DeviceListActivity.DEVICE_ADDRESS, CONNECTED_DEVICE_ADDRESS, type);
 
                         MessageContents imageContents = new MessageContents();
                         imageContents.message = lastSentImage;
                         imageContents.receiver = CONNECTED_DEVICE_ADDRESS;
                         imageContents.sender = DeviceListActivity.DEVICE_ADDRESS;
-                        imageContents.type = Constant.PHOTO;
+                        imageContents.type = type;
 
                         messageContentses.add(imageContents);
                         messageAdapter.notifyDataSetChanged();
-
-                        Toast.makeText(MainActivity.this, "Photo was sent successfully", Toast.LENGTH_SHORT).show();
+                        setInvisible(mSendButton);
+                        setVisible(recordingButton);
+                        setInvisible(pb);
+                        stateView.setText("Sent");
+                        statusBar.setAnimation(hide);
+                        hide.start();
                         break;
                     }
 
@@ -203,6 +259,7 @@ public class MainActivity extends AppCompatActivity {
                         Toast.makeText(MainActivity.this, "Photo was sent, but didn't go through correctly", Toast.LENGTH_SHORT).show();
                         break;
                     }
+
                 }
             }
         };
@@ -211,30 +268,39 @@ public class MainActivity extends AppCompatActivity {
         MainApplication.serverHandler = new Handler() {
             @Override
             public void handleMessage(Message message) {
+
+
                 switch (message.what) {
                     case MessageType.DATA_RECEIVED: {
-                        if (progressDialog != null) {
-                            progressDialog.dismiss();
-                            progressDialog = null;
-                        }
+
 
                         BitmapFactory.Options options = new BitmapFactory.Options();
                         options.inSampleSize = 2;
-                        Bitmap image = BitmapFactory.decodeByteArray(((byte[]) message.obj), 0, ((byte[]) message.obj).length, options);
-                        String path = saveToInternalStorage(image);
+                        String path = "";
+                        String type = "";
+                        if (FLAG.equals(PHOTO)) {
+                            Bitmap image = BitmapFactory.decodeByteArray(((byte[]) message.obj), 0, ((byte[]) message.obj).length, options);
+                            path = saveToInternalStorage(image, 0);
+                            type = Constant.PHOTO;
+                        } else {
+                            path = saveFileToInternalStorage((byte[]) message.obj, 1);
+                            type = Constant.VOICE;
+                        }
+                        dbHandler.saveMessage(path, CONNECTED_DEVICE_ADDRESS, DeviceListActivity.DEVICE_ADDRESS, type);
 
-                        dbHandler.saveMessage(path,CONNECTED_DEVICE_ADDRESS,DeviceListActivity.DEVICE_ADDRESS, Constant.PHOTO);
 
                         MessageContents imageContents = new MessageContents();
                         imageContents.message = path;
                         imageContents.sender = CONNECTED_DEVICE_ADDRESS;
                         imageContents.receiver = DeviceListActivity.DEVICE_ADDRESS;
-                        imageContents.type = Constant.PHOTO;
+                        imageContents.type = type;
 
                         messageContentses.add(imageContents);
                         messageAdapter.notifyDataSetChanged();
-
-
+                        stateView.setText("Received");
+                        setInvisible(pb);
+                        statusBar.setAnimation(hide);
+                        hide.start();
                         break;
                     }
 
@@ -247,15 +313,12 @@ public class MainActivity extends AppCompatActivity {
                         // some kind of update
                         MainApplication.progressData = (ProgressData) message.obj;
                         double pctRemaining = 100 - (((double) MainApplication.progressData.remainingSize / MainApplication.progressData.totalSize) * 100);
-                        if (progressDialog == null) {
-                            progressDialog = new ProgressDialog(MainActivity.this);
-                            progressDialog.setMessage("Receiving photo...");
-                            progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
-                            progressDialog.setProgress(0);
-                            progressDialog.setMax(100);
-                            progressDialog.show();
-                        }
-                        progressDialog.setProgress((int) Math.floor(pctRemaining));
+                        stateView.setText("Receiving...");
+                        setVisible(seekbar);
+
+                        statusBar.setAnimation(show);
+                        show.start();
+                        seekbar.setProgress((int) Math.floor(pctRemaining));
                         break;
                     }
 
@@ -268,15 +331,15 @@ public class MainActivity extends AppCompatActivity {
         };
 
 
-
-
-
+        // ATTENTION: This was auto-generated to implement the App Indexing API.
+        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        client = new GoogleApiClient.Builder(this).addApi(AppIndex.API).build();
     }
 
     private void setupChat() {
 
         //Load data into arraylist
-        messageContentses = dbHandler.getAllMessages(DeviceListActivity.DEVICE_ADDRESS,CONNECTED_DEVICE_ADDRESS);
+        messageContentses = dbHandler.getAllMessages(DeviceListActivity.DEVICE_ADDRESS, CONNECTED_DEVICE_ADDRESS);
 
         // Initialize the array adapter for the conversation thread
         messageAdapter = new MessageAdapter(this, messageContentses);
@@ -288,21 +351,64 @@ public class MainActivity extends AppCompatActivity {
         // Initialize the send button with a listener that for click events
         mSendButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
-
                 String message = mOutEditText.getText().toString();
-                sendMessage(message);
+                if (message.length() == 0) {
+                    FLAG = VOICE;
+                    voiceMessage.stopAudioRecording();
+                    sendMessage(VOICE);
+                    sendVoice();
+                } else {
+
+                    sendMessage(message);
+                }
+            }
+        });
+
+        mOutEditText.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+
+                if (s.length() > 0) {
+                    setInvisible(recordingButton);
+                    setVisible(mSendButton);
+                } else {
+                    setInvisible(mSendButton);
+                    setVisible(recordingButton);
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
 
             }
         });
 
 
-
         // Initialize the buffer for outgoing messageContentses
         mOutStringBuffer = new StringBuffer("");
 
-        connectDevice(getIntent(),true);
+        connectDevice(getIntent(), true);
     }
 
+    private void sendVoice() {
+        File file = new File(voiceMessage.voiceStoragePath);
+        byte[] b = new byte[(int) file.length()];
+        try {
+            FileInputStream fileInputStream = new FileInputStream(file);
+            fileInputStream.read(b);
+
+        } catch (Exception e) {
+            System.out.println("File Not Found.");
+            e.printStackTrace();
+        }
+
+        sendFile(b, 1);
+    }
 
 
     private void sendMessage(String message) {
@@ -336,6 +442,7 @@ public class MainActivity extends AppCompatActivity {
                 String message = view.getText().toString();
                 sendMessage(message);
             }
+
             return true;
         }
     };
@@ -350,41 +457,50 @@ public class MainActivity extends AppCompatActivity {
 
             switch (msg.what) {
                 case Constants.MESSAGE_STATE_CHANGE:
-                    if(stateView != null)
-                    switch (msg.arg1) {
-                        case BluetoothChatService.STATE_CONNECTED:
-                            startServerThread();
-                            stateView.setText("Connected to - " + MainActivity.CONNECTED_DEVICE);
-                            setInvisible(pb);
-                            setInvisible(tryAgainView);
-                            break;
-                        case BluetoothChatService.STATE_CONNECTING:
-                            stateView.setText(R.string.title_connecting);
-                            setVisible(pb);
-                            setInvisible(tryAgainView);
-                            break;
-                        case BluetoothChatService.STATE_LISTEN:
-                        case BluetoothChatService.STATE_NONE:
-                            stateView.setText(R.string.title_not_connected);
-                            setInvisible(pb);
-                            setVisible(tryAgainView);
-                            break;
-                    }
+                    if (stateView != null)
+                        switch (msg.arg1) {
+                            case BluetoothChatService.STATE_CONNECTED:
+                                startServerThread();
+                                stateView.setText("Connected to - " + MainActivity.CONNECTED_DEVICE);
+                                setInvisible(pb);
+                                setInvisible(tryAgainView);
+                                statusBar.setAnimation(hide);
+                                hide.start();
+                                break;
+                            case BluetoothChatService.STATE_CONNECTING:
+                                stateView.setText(R.string.title_connecting);
+                                setVisible(pb);
+                                setInvisible(tryAgainView);
+                                break;
+                            case BluetoothChatService.STATE_LISTEN:
+
+                            case BluetoothChatService.STATE_NONE:
+                                stateView.setText(R.string.title_not_connected);
+                                setInvisible(pb);
+                                setVisible(tryAgainView);
+                                statusBar.setAnimation(show);
+                                show.start();
+                                break;
+                        }
                     break;
                 case Constants.MESSAGE_WRITE:
                     byte[] writeBuf = (byte[]) msg.obj;
                     // construct a string from the buffer
                     String writeMessage = new String(writeBuf);
-                    dbHandler.saveMessage(writeMessage,DeviceListActivity.DEVICE_ADDRESS,CONNECTED_DEVICE_ADDRESS, Constant.TEXTS);
 
-                    MessageContents message = new MessageContents();
-                    message.message = writeMessage;
-                    message.receiver = CONNECTED_DEVICE_ADDRESS;
-                    message.sender = DeviceListActivity.DEVICE_ADDRESS;
-                    message.type = Constant.TEXTS;
+                    if (!writeMessage.equals(VOICE) && !writeMessage.equals(PHOTO)) {
 
-                    messageContentses.add(message);
-                    messageAdapter.notifyDataSetChanged();
+                        dbHandler.saveMessage(writeMessage, DeviceListActivity.DEVICE_ADDRESS, CONNECTED_DEVICE_ADDRESS, Constant.TEXTS);
+
+                        MessageContents message = new MessageContents();
+                        message.message = writeMessage;
+                        message.receiver = CONNECTED_DEVICE_ADDRESS;
+                        message.sender = DeviceListActivity.DEVICE_ADDRESS;
+                        message.type = Constant.TEXTS;
+
+                        messageContentses.add(message);
+                        messageAdapter.notifyDataSetChanged();
+                    }
 
                     break;
                 case Constants.MESSAGE_READ:
@@ -392,6 +508,7 @@ public class MainActivity extends AppCompatActivity {
                     // construct a string from the valid bytes in the buffer
                     String readMessage = new String(readBuf, 0, msg.arg1);
 
+                    if (!readMessage.equals(VOICE) && !readMessage.equals(PHOTO)) {
                         dbHandler.saveMessage(readMessage, CONNECTED_DEVICE_ADDRESS, DeviceListActivity.DEVICE_ADDRESS, Constant.TEXTS);
                         MessageContents messageread = new MessageContents();
                         messageread.message = readMessage;
@@ -401,6 +518,10 @@ public class MainActivity extends AppCompatActivity {
 
                         messageContentses.add(messageread);
                         messageAdapter.notifyDataSetChanged();
+                    } else {
+                        FLAG = readMessage;
+                        startServerThread();
+                    }
 
                     break;
                 case Constants.MESSAGE_DEVICE_NAME:
@@ -435,32 +556,26 @@ public class MainActivity extends AppCompatActivity {
                     // Java doesn't allow array casting, this is a little hack
                     Uri[] uris = new Uri[parcelableUris.length];
                     System.arraycopy(parcelableUris, 0, uris, 0, parcelableUris.length);
-                    Uri uri = Uri.fromFile(new File(uris[0].toString()));
-                    Bitmap image = MediaStore.Images.Media.getBitmap(this.getContentResolver(),uri);
+                    File file = new File(uris[0].toString());
 
                     lastSentImage = uris[0].toString();
-                    //Toast.makeText(getApplicationContext(),"done",Toast.LENGTH_LONG).show();
-//                    File file = new File(Environment.getExternalStorageDirectory(), MainApplication.TEMP_IMAGE_FILE_NAME);
-//                    BitmapFactory.Options options = new BitmapFactory.Options();
-//                    options.inSampleSize = 2;
-//                    Bitmap image = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+                    BitmapFactory.Options options = new BitmapFactory.Options();
+                    options.inSampleSize = 2;
+                    Bitmap image = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+
 
                     ByteArrayOutputStream compressedImageStream = new ByteArrayOutputStream();
-                    image.compress(Bitmap.CompressFormat.JPEG, MainApplication.IMAGE_QUALITY, compressedImageStream);
+                    image.compress(Bitmap.CompressFormat.PNG, MainApplication.IMAGE_QUALITY, compressedImageStream);
                     byte[] compressedImage = compressedImageStream.toByteArray();
-                    Log.v(TAG, "Compressed image size: " + compressedImage.length);
 
-                    // Invoke client thread to send
-                    Message message = new Message();
-                    message.obj = compressedImage;
-                    MainApplication.clientThread.incomingHandler.sendMessage(message);
 
+                    sendFile(compressedImage, 20);
 
 
                 } catch (Exception e) {
                     Log.d(TAG, e.toString());
 
-                    Toast.makeText(getApplicationContext(),e+"",Toast.LENGTH_LONG).show();
+                    Toast.makeText(getApplicationContext(), e + "", Toast.LENGTH_LONG).show();
                 }
             }
             return;
@@ -494,13 +609,35 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public static void startServerThread(){
-        if (MainApplication.serverThread == null) {
+    public void sendFile(byte[] compressedFile, int arg) {
+
+
+        // Invoke client thread to send
+        Message message = new Message();
+        message.obj = compressedFile;
+        message.arg1 = arg;
+        Bundle data = new Bundle();
+        data.putInt("key", 10);
+        message.setData(data);
+        MainApplication.clientThread.incomingHandler.sendMessage(message);
+
+    }
+
+    public static void startServerThread() {
+        if (MainApplication.serverThread == null || MainApplication.serverThread.isInterrupted()) {
             Log.v(TAG, "Starting server thread.  Able to accept photos.");
             MainApplication.serverThread = new ServerThread(MainApplication.adapter, MainApplication.serverHandler);
             MainApplication.serverThread.start();
-          //  toast("server thread");
+
         }
+    }
+
+    public void startClientThread() {
+        if (MainApplication.clientThread != null) {
+            MainApplication.clientThread.cancel();
+        }
+        MainApplication.clientThread = new ClientThread(mBluetoothAdapter.getRemoteDevice(CONNECTED_DEVICE_ADDRESS), MainApplication.clientHandler);
+        MainApplication.clientThread.start();
     }
 
     private void connectDevice(Intent data, boolean secure) {
@@ -527,18 +664,42 @@ public class MainActivity extends AppCompatActivity {
         startActivityForResult(intent, INTENT_REQUEST_GET_N_IMAGES);
     }
 
-    public void createDirectory(){
-        File f = new File(Environment.getExternalStorageDirectory(),"BTChatApp");
-        if(!f.exists()){
-            f.mkdirs();
+    public void createDirectory() {
+        File f1 = new File(Environment.getExternalStorageDirectory(), "BTChatApp/images/");
+        File f2 = new File(Environment.getExternalStorageDirectory(), "BTChatApp/voices/");
+        if (!f1.exists()) {
+            f1.mkdirs();
+            f2.mkdirs();
         }
     }
 
-    private String saveToInternalStorage(Bitmap bitmapImage){
+    private String saveFileToInternalStorage(byte[] byteArray, int arg) {
+
         createDirectory();
-        // Create imageDir
         Calendar calendar = Calendar.getInstance();
-        File mypath=new File(Environment.getExternalStorageDirectory(),"BTChatApp/"+calendar.getTimeInMillis()+".png");
+
+        File strFilePath = new File(Environment.getExternalStorageDirectory(), "BTChatApp/" + getFolder(arg) + calendar.getTimeInMillis() + getExtension(arg));
+        try {
+            FileOutputStream fos = new FileOutputStream(strFilePath);
+
+            fos.write(byteArray);
+            fos.close();
+        } catch (FileNotFoundException ex) {
+            System.out.println("FileNotFoundException : " + ex);
+        } catch (IOException ioe) {
+            System.out.println("IOException : " + ioe);
+        }
+        return strFilePath.getAbsolutePath();
+    }
+
+    private String saveToInternalStorage(Bitmap bitmapImage, int arg) {
+
+        // Create imageDir
+        createDirectory();
+        Calendar calendar = Calendar.getInstance();
+
+
+        File mypath = new File(Environment.getExternalStorageDirectory(), "BTChatApp/" + getFolder(arg) + calendar.getTimeInMillis() + getExtension(arg));
 
         FileOutputStream fos = null;
         try {
@@ -557,45 +718,19 @@ public class MainActivity extends AppCompatActivity {
         return mypath.getAbsolutePath();
     }
 
-    public void toast(String msg){
-
-        Toast.makeText(getApplicationContext(),msg,Toast.LENGTH_SHORT).show();
-
+    public String getFolder(int arg) {
+        return (arg == 0) ? "images/" : "voices/";
     }
 
-//    @Override
-//    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-//        super.onActivityResult(requestCode, resultCode, data);
-//
-//        if (requestCode == MainApplication.PICTURE_RESULT_CODE) {
-//            if (resultCode == RESULT_OK) {
-//                Log.v(TAG, "Photo acquired from camera intent");
-//                try {
-//                    File file = new File(Environment.getExternalStorageDirectory(), MainApplication.TEMP_IMAGE_FILE_NAME);
-//                    BitmapFactory.Options options = new BitmapFactory.Options();
-//                    options.inSampleSize = 2;
-//                    Bitmap image = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
-//
-//                    ByteArrayOutputStream compressedImageStream = new ByteArrayOutputStream();
-//                    image.compress(Bitmap.CompressFormat.JPEG, MainApplication.IMAGE_QUALITY, compressedImageStream);
-//                    byte[] compressedImage = compressedImageStream.toByteArray();
-//                    Log.v(TAG, "Compressed image size: " + compressedImage.length);
-//
-//                    // Invoke client thread to send
-//                    Message message = new Message();
-//                    message.obj = compressedImage;
-//                    MainApplication.clientThread.incomingHandler.sendMessage(message);
-//
-//                    // Display the image locally
-////                    ImageView imageView = (ImageView) findViewById(R.id.imageView);
-////                    imageView.setImageBitmap(image);
-//
-//                } catch (Exception e) {
-//                    Log.d(TAG, e.toString());
-//                }
-//            }
-//        }
-//    }
+    public String getExtension(int arg) {
+        return (arg == 0) ? ".png" : ".3gpp";
+    }
+
+    public void toast(String msg) {
+
+        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+
+    }
 
     @Override
     protected void onDestroy() {
@@ -604,11 +739,51 @@ public class MainActivity extends AppCompatActivity {
         MainApplication.serverThread = null;
     }
 
-    public static void setVisible(View view){
+    public static void setVisible(View view) {
         view.setVisibility(View.VISIBLE);
     }
 
-    public static void setInvisible(View view){
+    public static void setInvisible(View view) {
         view.setVisibility(View.GONE);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+
+        // ATTENTION: This was auto-generated to implement the App Indexing API.
+        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        client.connect();
+        Action viewAction = Action.newAction(
+                Action.TYPE_VIEW, // TODO: choose an action type.
+                "Main Page", // TODO: Define a title for the content shown.
+                // TODO: If you have web page content that matches this app activity's content,
+                // make sure this auto-generated web page URL is correct.
+                // Otherwise, set the URL to null.
+                Uri.parse("http://host/path"),
+                // TODO: Make sure this auto-generated app URL is correct.
+                Uri.parse("android-app://com.fahim.lokman.bluetoothchatapp/http/host/path")
+        );
+        AppIndex.AppIndexApi.start(client, viewAction);
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+
+        // ATTENTION: This was auto-generated to implement the App Indexing API.
+        // See https://g.co/AppIndexing/AndroidStudio for more information.
+        Action viewAction = Action.newAction(
+                Action.TYPE_VIEW, // TODO: choose an action type.
+                "Main Page", // TODO: Define a title for the content shown.
+                // TODO: If you have web page content that matches this app activity's content,
+                // make sure this auto-generated web page URL is correct.
+                // Otherwise, set the URL to null.
+                Uri.parse("http://host/path"),
+                // TODO: Make sure this auto-generated app URL is correct.
+                Uri.parse("android-app://com.fahim.lokman.bluetoothchatapp/http/host/path")
+        );
+        AppIndex.AppIndexApi.end(client, viewAction);
+        client.disconnect();
     }
 }
