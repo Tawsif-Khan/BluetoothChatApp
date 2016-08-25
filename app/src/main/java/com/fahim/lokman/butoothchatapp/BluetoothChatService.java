@@ -24,7 +24,9 @@ import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.util.Log;
+
+
+import com.fahim.lokman.bluetoothchatapp.logger.Log;
 
 import java.io.IOException;
 import java.io.InputStream;
