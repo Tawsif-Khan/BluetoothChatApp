@@ -40,6 +40,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.fahim.lokman.bluetoothchatapp.Utils.FilePicker;
 import com.fahim.lokman.bluetoothchatapp.adapter.MessageAdapter;
 import com.fahim.lokman.bluetoothchatapp.btxfr.ClientThread;
 import com.fahim.lokman.bluetoothchatapp.btxfr.MessageType;
@@ -68,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "BluetoothChatFragment";
     private static final int INTENT_REQUEST_GET_N_IMAGES = 14;
+    private static final int REQUEST_PICK_FILE = 10;
     //    private static final String TAG = "BTPHOTO/MainActivity";
     private Spinner deviceSpinner;
     private ProgressDialog progressDialog;
@@ -78,13 +80,14 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_ENABLE_BT = 3;
     public static final String VOICE = "ITISAVOICEMESSAGE";
     public static final String PHOTO = "ITISAPHOTOMESSAGE";
-
+    public static final String FILE = "ITISAFILEMESSAGE";
+    public static String EXTENSION;
     // Layout Views
     private ListView mConversationView;
     private EditText mOutEditText;
     public static ImageButton mSendButton;
     public static RelativeLayout statusBar;
-    private ImageButton addImage;
+    private ImageButton addImage, addFile;
     public static ImageButton recordingButton;
     public static TextView stateView, tryAgainView;
     public static SeekBar seekbar;
@@ -114,11 +117,9 @@ public class MainActivity extends AppCompatActivity {
      * String buffer for outgoing messageContentses
      */
     private StringBuffer mOutStringBuffer;
-    /**
-     * Newly discovered devices
-     */
+
     public static VoiceMessage voiceMessage;
-    public static Animation show,hide;
+    public static Animation show, hide;
     /**
      * ATTENTION: This was auto-generated to implement the App Indexing API.
      * See https://g.co/AppIndexing/AndroidStudio for more information.
@@ -143,10 +144,11 @@ public class MainActivity extends AppCompatActivity {
 
         dbHandler = new DBHandler(this);
         voiceMessage = new VoiceMessage();
-        show = AnimationUtils.loadAnimation(this,R.anim.show);
-        hide = AnimationUtils.loadAnimation(this,R.anim.hide);
+        show = AnimationUtils.loadAnimation(this, R.anim.show);
+        hide = AnimationUtils.loadAnimation(this, R.anim.hide);
 
         addImage = (ImageButton) findViewById(R.id.addImage);
+        addFile = (ImageButton) findViewById(R.id.addFile);
         mConversationView = (ListView) findViewById(R.id.in);
         mOutEditText = (EditText) findViewById(R.id.edit_text_out);
         mSendButton = (ImageButton) findViewById(R.id.button_send);
@@ -192,12 +194,28 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        addFile.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FLAG = FILE;
+                sendMessage(FILE);
+
+                startClientThread();
+                Intent intent = new Intent(MainActivity.this, FilePicker.class);
+                startActivityForResult(intent, REQUEST_PICK_FILE);
+            }
+        });
+
         tryAgainView.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 connectDevice(getIntent(), true);
             }
         });
+
+        /*
+        Maintains the file sender's sending operations
+         */
 
         MainApplication.clientHandler = new Handler() {
             @Override
@@ -232,8 +250,10 @@ public class MainActivity extends AppCompatActivity {
                         String path = "";
                         if (FLAG.equals(PHOTO)) {
                             type = Constant.PHOTO;
-                        } else {
+                        } else if (FLAG.equals(VOICE)) {
                             type = Constant.VOICE;
+                        } else {
+                            type = Constant.FILE;
                         }
 
                         dbHandler.saveMessage(lastSentImage, DeviceListActivity.DEVICE_ADDRESS, CONNECTED_DEVICE_ADDRESS, type);
@@ -264,7 +284,9 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
-
+        /*
+        Maintains the file receiver's receiving operations
+         */
         MainApplication.serverHandler = new Handler() {
             @Override
             public void handleMessage(Message message) {
@@ -272,7 +294,6 @@ public class MainActivity extends AppCompatActivity {
 
                 switch (message.what) {
                     case MessageType.DATA_RECEIVED: {
-
 
                         BitmapFactory.Options options = new BitmapFactory.Options();
                         options.inSampleSize = 2;
@@ -282,6 +303,9 @@ public class MainActivity extends AppCompatActivity {
                             Bitmap image = BitmapFactory.decodeByteArray(((byte[]) message.obj), 0, ((byte[]) message.obj).length, options);
                             path = saveToInternalStorage(image, 0);
                             type = Constant.PHOTO;
+                        } else if (FLAG.equals(FILE)) {
+                            path = saveFileToInternalStorage((byte[]) message.obj, 5);
+                            type = Constant.FILE;
                         } else {
                             path = saveFileToInternalStorage((byte[]) message.obj, 1);
                             type = Constant.VOICE;
@@ -397,6 +421,13 @@ public class MainActivity extends AppCompatActivity {
 
     private void sendVoice() {
         File file = new File(voiceMessage.voiceStoragePath);
+
+
+        sendFile(convertToByte(file), 1);
+    }
+
+    private byte[] convertToByte(File file) {
+
         byte[] b = new byte[(int) file.length()];
         try {
             FileInputStream fileInputStream = new FileInputStream(file);
@@ -407,9 +438,12 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
-        sendFile(b, 1);
+        return b;
     }
 
+    /*
+    Method which sends text messages
+     */
 
     private void sendMessage(String message) {
         // Check that we're actually connected before trying anything
@@ -488,7 +522,7 @@ public class MainActivity extends AppCompatActivity {
                     // construct a string from the buffer
                     String writeMessage = new String(writeBuf);
 
-                    if (!writeMessage.equals(VOICE) && !writeMessage.equals(PHOTO)) {
+                    if (!writeMessage.equals(VOICE) && !writeMessage.equals(PHOTO) && !writeMessage.startsWith(FILE)) {
 
                         dbHandler.saveMessage(writeMessage, DeviceListActivity.DEVICE_ADDRESS, CONNECTED_DEVICE_ADDRESS, Constant.TEXTS);
 
@@ -508,7 +542,7 @@ public class MainActivity extends AppCompatActivity {
                     // construct a string from the valid bytes in the buffer
                     String readMessage = new String(readBuf, 0, msg.arg1);
 
-                    if (!readMessage.equals(VOICE) && !readMessage.equals(PHOTO)) {
+                    if (!readMessage.equals(VOICE) && !readMessage.equals(PHOTO) && !readMessage.startsWith(FILE)) {
                         dbHandler.saveMessage(readMessage, CONNECTED_DEVICE_ADDRESS, DeviceListActivity.DEVICE_ADDRESS, Constant.TEXTS);
                         MessageContents messageread = new MessageContents();
                         messageread.message = readMessage;
@@ -519,7 +553,14 @@ public class MainActivity extends AppCompatActivity {
                         messageContentses.add(messageread);
                         messageAdapter.notifyDataSetChanged();
                     } else {
+                        String[] str;
+
                         FLAG = readMessage;
+                        if (readMessage.startsWith(FILE)) {
+                            str = readMessage.split("\\.");
+                            EXTENSION = "." + str[str.length - 1];
+                            FLAG = str[0];
+                        }
                         startServerThread();
                     }
 
@@ -606,8 +647,28 @@ public class MainActivity extends AppCompatActivity {
                             Toast.LENGTH_SHORT).show();
                     finish();
                 }
+                break;
+            case REQUEST_PICK_FILE:
+
+                if (data.hasExtra(FilePicker.EXTRA_FILE_PATH)) {
+
+                    File selectedFile = new File
+                            (data.getStringExtra(FilePicker.EXTRA_FILE_PATH));
+                    lastSentImage = selectedFile.getAbsolutePath();
+                    String[] str = data.getStringExtra(FilePicker.EXTRA_FILE_PATH).split("\\.");
+                    toast(data.getStringExtra(FilePicker.EXTRA_FILE_PATH));
+                    sendMessage(FILE + "." + str[str.length - 1]);
+                    sendFile(convertToByte(selectedFile), 5);
+
+                }
+                break;
         }
     }
+
+
+    /*
+    This method can send any kind of files converted into byte[]
+     */
 
     public void sendFile(byte[] compressedFile, int arg) {
 
@@ -616,13 +677,13 @@ public class MainActivity extends AppCompatActivity {
         Message message = new Message();
         message.obj = compressedFile;
         message.arg1 = arg;
-        Bundle data = new Bundle();
-        data.putInt("key", 10);
-        message.setData(data);
         MainApplication.clientThread.incomingHandler.sendMessage(message);
 
     }
 
+    /*
+    starts server thread for receiver.
+     */
     public static void startServerThread() {
         if (MainApplication.serverThread == null || MainApplication.serverThread.isInterrupted()) {
             Log.v(TAG, "Starting server thread.  Able to accept photos.");
@@ -632,6 +693,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /*
+    starts client server for sender.
+     */
     public void startClientThread() {
         if (MainApplication.clientThread != null) {
             MainApplication.clientThread.cancel();
@@ -640,6 +704,9 @@ public class MainActivity extends AppCompatActivity {
         MainApplication.clientThread.start();
     }
 
+    /*
+    connects device.
+     */
     private void connectDevice(Intent data, boolean secure) {
         // Get the device MAC address
         String address = data.getExtras()
@@ -667,12 +734,17 @@ public class MainActivity extends AppCompatActivity {
     public void createDirectory() {
         File f1 = new File(Environment.getExternalStorageDirectory(), "BTChatApp/images/");
         File f2 = new File(Environment.getExternalStorageDirectory(), "BTChatApp/voices/");
-        if (!f1.exists()) {
+        File f3 = new File(Environment.getExternalStorageDirectory(), "BTChatApp/files/");
+        if (!f1.exists() || !f2.exists() || !f3.exists()) {
             f1.mkdirs();
             f2.mkdirs();
+            f3.mkdirs();
         }
     }
 
+    /*
+    method for saving any file into storage.
+     */
     private String saveFileToInternalStorage(byte[] byteArray, int arg) {
 
         createDirectory();
@@ -692,6 +764,9 @@ public class MainActivity extends AppCompatActivity {
         return strFilePath.getAbsolutePath();
     }
 
+    /*
+    method for saving images to internal storage.
+     */
     private String saveToInternalStorage(Bitmap bitmapImage, int arg) {
 
         // Create imageDir
@@ -719,10 +794,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public String getFolder(int arg) {
+        if (arg == 5)
+            return "files/";
+
         return (arg == 0) ? "images/" : "voices/";
     }
 
     public String getExtension(int arg) {
+        if (arg == 5) {
+            return EXTENSION;
+        }
         return (arg == 0) ? ".png" : ".3gpp";
     }
 

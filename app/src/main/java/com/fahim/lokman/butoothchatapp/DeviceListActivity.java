@@ -67,12 +67,6 @@ public class DeviceListActivity extends AppCompatActivity {
         //requestWindowFeature(Window.FEATURE_INDETERMINATE_PROGRESS);
         setContentView(R.layout.activity_device_list);
 
-//        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
-//        setSupportActionBar(toolbar);
-        // Set result CANCELED in case the user backs out
-        //setResult(Activity.RESULT_CANCELED);
-
-
         // Get the local Bluetooth adapter
         mBtAdapter = BluetoothAdapter.getDefaultAdapter();
         DEVICE_ADDRESS = mBtAdapter.getAddress();
@@ -82,17 +76,6 @@ public class DeviceListActivity extends AppCompatActivity {
             Toast.makeText(getApplicationContext(), "Bluetooth is not available", Toast.LENGTH_LONG).show();
             finish();
         }
-
-//        // Initialize the button to perform device discovery
-//        Button scanButton = (Button) findViewById(R.id.button_scan);
-//        MainActivity.stateView = (TextView) findViewById(R.id.stateView);
-//        scanButton.setOnClickListener(new View.OnClickListener() {
-//            public void onClick(View v) {
-//                doDiscovery();
-//                v.setVisibility(View.GONE);
-//            }
-//        });
-
 
 
         // Register for broadcasts when a device is discovered
@@ -106,7 +89,7 @@ public class DeviceListActivity extends AppCompatActivity {
 
 
 
-
+        // To start Chat servcie
         startChatService();
     }
 
@@ -275,6 +258,9 @@ public class DeviceListActivity extends AppCompatActivity {
         }
     }
 
+    /*
+    Starts the chat service
+    */
     public void startChatService(){
 
         if(mBtAdapter.isEnabled()) {
@@ -291,12 +277,16 @@ public class DeviceListActivity extends AppCompatActivity {
         }
     }
 
+    /*
+    Sets paired devices to listView.
+     */
     public void setPairedDevices(){
         // Initialize array adapters. One for already paired devices and
         // one for newly discovered devices
         ArrayAdapter<String> pairedDevicesArrayAdapter =
                 new ArrayAdapter<String>(this, R.layout.device_name);
         mNewDevicesArrayAdapter = new ArrayAdapter<String>(this, R.layout.device_name);
+        pairedDevicesArrayAdapter.add("Chat to Bot");
 
         // Find and set up the ListView for paired devices
         ListView pairedListView = (ListView) findViewById(R.id.paired_devices);
